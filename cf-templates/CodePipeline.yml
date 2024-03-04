@@ -1,26 +1,42 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: This template is used to create a CI/CD Pipeline that deploys a React Web app to S3 for static website hosting.
 
-# Parameters to be used through out the template
 Parameters:
   Stage:
+    Description: "Deployment stage (e.g., dev, staging, prod)"
     Type: String
-    Default: <STAGE>
-  AppName: 
+
+  AppName:
+    Description: "Name of the application"
     Type: String
-    Default: <APPNAME>
+
   GithubUserName:
+    Description: "GitHub username owning the repository"
     Type: String
-    Default: <GITHUB USER NAME>
+
   GithubRepo:
+    Description: "GitHub repository containing the source code"
     Type: String
-    Default:  <GITHUB REPO>
+
   GithubBranch:
+    Description: "Default branch of the GitHub repository to use for deployment"
     Type: String
-    Default:  <GITHUB BRANCH>
+    AllowedValues:
+      - master
+      - main
+      - develop
+    Default: "main"
+
   GithubOAuthToken:
+    Description: "OAuth token for GitHub to authorize integration (must have permissions to access the repo)"
     Type: String
-    Default: <GITHUB ACCESS TOKEN>
+    NoEcho: true
+  CodeBuildImage:
+    Type: String
+    Default: "aws/codebuild/amazonlinux2-x86_64-standard:3.0"
+  BuildSpecPath:
+    Type: String
+    Default: "buildspec.yml"
 
 # Resources that will be provisioned by this template.
 Resources:
@@ -30,185 +46,88 @@ Resources:
     Type: 'AWS::CodePipeline::Pipeline'
     Properties:
       RoleArn: !GetAtt CodePipeLineRole.Arn
-      Name: !Join ['-', [!Ref AppName, !Ref 'AWS::AccountId', 'CodePipeLine',!Ref Stage]]
+      Name: !Sub "${AppName}-${AWS::AccountId}-CodePipeline-${Stage}"
       ArtifactStore:
         Location: !Ref PipelineBucket
         Type: S3
-
-      # Stages declaration
       Stages:
-     # Download source code from Github Repo to source-output-artifacts path in S3 Bucket
-        - 
-          Name: Source
+        - Name: Source
           Actions: 
-            - 
-              Name: SourceAction
+            - Name: SourceAction
               ActionTypeId: 
-                 Category: Source
-                 Owner: ThirdParty
-                 Provider: GitHub
-                 Version: 1
+                Category: Source
+                Owner: ThirdParty
+                Provider: GitHub
+                Version: 1
               OutputArtifacts: 
-                - 
-                  Name: MyApp
+                - Name: MyApp
               Configuration:                
-                 Repo: !Ref GithubRepo
-                 Branch: !Ref GithubBranch
-                 Owner: !Ref GithubUserName
-                 OAuthToken: !Ref GithubOAuthToken
+                Repo: !Ref GithubRepo
+                Branch: !Ref GithubBranch
+                Owner: !Ref GithubUserName
+                OAuthToken: !Ref GithubOAuthToken
         
-        # Build the project using the BuildProject and Output build artifacts to build-output-artifacts path in S3 Bucket
-        - 
-          Name: Build
+        - Name: Build
           Actions: 
-            - 
-              Name: BuildAction
+            - Name: BuildAction
               ActionTypeId: 
                 Category: Build
                 Owner: AWS
                 Version: 1
                 Provider: CodeBuild
               InputArtifacts: 
-                - 
-                  Name: MyApp
+                - Name: MyApp
               OutputArtifacts: 
-                - 
-                  Name: MyAppBuild
+                - Name: MyAppBuild
               Configuration:
                 ProjectName: !Ref CodeBuild
 
-        # Deploy the project to S3 Bucket for website hosting.
-        - 
-          Name: Deploy
+        - Name: Deploy
           Actions: 
-            - 
-              Name: DeployAction
+            - Name: DeployAction
               ActionTypeId: 
                 Category: Deploy
                 Owner: AWS
                 Version: 1
                 Provider: S3
               InputArtifacts: 
-                - 
-                  Name: MyAppBuild  
+                - Name: MyAppBuild
               Configuration:                
                 BucketName: !Ref DeployBucket
-                Extract: 'true'                
-      # Create a name tag for the pipeline
-      Tags:
-        - Key: Name
-          Value: !Join ['-', [!Ref AppName, !Ref 'AWS::AccountId', 'CodePipeLine',!Ref Stage]]
+                Extract: 'true'
 
-  # Create role for CodeBuild
+  # Create role for CodeBuild with managed policies
   CodeBuildRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
-          - 
-            Effect: Allow
+          - Effect: Allow
             Principal:
-              Service:
-                - "codebuild.amazonaws.com"
-            Action:
-              - "sts:AssumeRole"
+              Service: "codebuild.amazonaws.com"
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+        - arn:aws:iam::aws:policy/AWSCodeBuildDeveloperAccess
       Path: /service-role/
-      Policies:
-        - PolicyName: root
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement: 
-              - 
-                Effect: Allow
-                Action:
-                  - "s3:GetObject"
-                  - "s3:GetObjectVersion"
-                  - "s3:GetBucketVersioning"
-                  - "s3:PutObject"
-                  - "s3:PutObjectAcl"
-                  - "s3:PutObjectVersionAcl"
-                Resource: 
-                  - !GetAtt PipelineBucket.Arn
-                  - !Join ['', [!GetAtt PipelineBucket.Arn, "/*"]]
-              - 
-                Effect: Allow
-                Action:
-                  - "s3:GetObject"
-                  - "s3:GetObjectVersion"
-                  - "s3:GetBucketVersioning"
-                  - "s3:PutObject"
-                  - "s3:PutObjectAcl"
-                  - "s3:PutObjectVersionAcl"
-                Resource: 
-                  - !GetAtt DeployBucket.Arn
-                  - !Join ['', [!GetAtt DeployBucket.Arn, "/*"]]
-              -
-                Effect: Allow
-                Action:
-                  - "logs:CreateLogGroup"
-                  - "logs:CreateLogStream"
-                  - "logs:PutLogEvents"
-                  - "cloudfront:CreateInvalidation"
-                Resource:
-                  - "*"
-      Tags:
-        - Key: Name
-          Value: !Join ['-', [!Ref AppName, !Ref 'AWS::AccountId', 'BuildRole', !Ref Stage]]
 
-
-  # Create role for CodePipeline
+  # Create role for CodePipeline with managed policies
   CodePipeLineRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
-          - 
-            Effect: Allow
+          - Effect: Allow
             Principal:
-              Service:
-                - "codepipeline.amazonaws.com"
-            Action:
-              - "sts:AssumeRole"
-      Policies:
-        - PolicyName: root
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement: 
-              - 
-                Effect: Allow
-                Action:
-                  - "s3:GetObject"
-                  - "s3:GetObjectVersion"
-                  - "s3:GetBucketVersioning"
-                  - "s3:GetObjectAcl"
-                  - "s3:PutObject"
-                  - "s3:PutObjectAcl"
-                  - "s3:PutObjectVersionAcl"                  
-                Resource: 
-                  - !GetAtt PipelineBucket.Arn
-                  - !Join ['', [!GetAtt PipelineBucket.Arn, "/*"]]
-              - 
-                Effect: Allow  
-                Action:
-                  - "codebuild:BatchGetBuilds"
-                  - "codebuild:StartBuild"
-                Resource: "*"
-              - 
-                Effect: Allow  
-                Action:
-                  - "codecommit:GetRepository"
-                  - "codecommit:GetBranch"
-                  - "codecommit:GetCommit"
-                  - "codecommit:UploadArchive"
-                  - "codecommit:GetUploadArchiveStatus"
-                  - "codecommit:CancelUploadArchive"
-                Resource: "*"                
-      Tags:
-        - Key: Name
-          Value: !Join ['-', [!Ref AppName, !Ref 'AWS::AccountId', 'PipelineRole', !Ref Stage]]
-
+              Service: "codepipeline.amazonaws.com"
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSCodePipelineFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+      Path: /service-role/
   
   # Create Code Build Project
   CodeBuild:
@@ -216,63 +135,38 @@ Resources:
     Properties:
       Name: !Sub ${AWS::StackName}-CodeBuild
       ServiceRole: !GetAtt CodeBuildRole.Arn
-      Artifacts:
-        Type: CODEPIPELINE
-        Name: MyProject
-      Source: 
-        Type: CODEPIPELINE
+      Artifacts: { Type: CODEPIPELINE, Name: MyProject }
+      Source: { Type: CODEPIPELINE, BuildSpec: !Ref BuildSpecPath }
       Environment:
         ComputeType: BUILD_GENERAL1_SMALL
         Type: LINUX_CONTAINER
-        Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
-      Source:
-        Type: CODEPIPELINE
-        # This file (buildspec.yml In Source code) contains commands to Create and Push a docker image to the ECR_REPOSITORY_URI
-        BuildSpec: buildspec.yml
-
-      Tags:
-        - Key: Name
-          Value: !Join ['-', [!Ref AppName, !Ref 'AWS::AccountId', 'BuildProj', !Ref Stage]]
-
-
+        Image: !Ref CodeBuildImage
   
-  # Create S3 Buckets (Storing Pipeline Artifacts, Website Hosting)
+ # Dynamically named S3 Buckets without hardcoded names
   PipelineBucket: 
     Type: 'AWS::S3::Bucket'
     Properties:
-      BucketName: !Join ['-', [!Ref AppName, !Ref 'AWS::AccountId', 'pipelineartifacts', !Ref Stage]]
+      BucketName: !Sub "${AppName}-${AWS::AccountId}-pipelineartifacts-${Stage}"
 
   DeployBucket:
     Type: 'AWS::S3::Bucket'
     Properties:
-      BucketName: !Join ['-', [!Ref AppName, !Ref 'AWS::AccountId', 'website', !Ref Stage]]
-      WebsiteConfiguration:
-        IndexDocument: index.html
+      BucketName: !Sub "${AppName}-${AWS::AccountId}-website-${Stage}"
+      WebsiteConfiguration: { IndexDocument: index.html }
       AccessControl: PublicReadWrite
       CorsConfiguration:
         CorsRules:
-        - AllowedOrigins: ['*']
-          AllowedMethods: [GET]
-  
-  # Bucket policy that hosts the website
+          - AllowedOrigins: ['*']
+            AllowedMethods: [GET]
+
+  # More dynamic BucketPolicy
   DeploymentBucketPolicy: 
     Type: AWS::S3::BucketPolicy
     Properties: 
       Bucket: !Ref DeployBucket
       PolicyDocument: 
         Statement: 
-          - 
-            Action: 
-              - "s3:GetObject"
+          - Action: ["s3:GetObject"]
             Effect: "Allow"
-            Resource: 
-              Fn::Join: 
-                - ""
-                - 
-                  - "arn:aws:s3:::"
-                  - 
-                    Ref: DeployBucket
-                  - "/*"
+            Resource: !Sub "arn:aws:s3:::${DeployBucket}/*"
             Principal: "*"
-         
-         
