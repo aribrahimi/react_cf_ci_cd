@@ -128,6 +128,7 @@ Resources:
         - arn:aws:iam::aws:policy/AWSCodePipelineFullAccess
         - arn:aws:iam::aws:policy/AmazonS3FullAccess
       Path: /service-role/
+      RoleArn: !GetAtt CodePipeLineRole.Arn
   
   # Create Code Build Project
   CodeBuild:
@@ -141,6 +142,7 @@ Resources:
         ComputeType: BUILD_GENERAL1_SMALL
         Type: LINUX_CONTAINER
         Image: !Ref CodeBuildImage
+      RoleArn: !GetAtt CodePipeLineRole.Arn
   
  # Dynamically named S3 Buckets without hardcoded names
   PipelineBucket: 
