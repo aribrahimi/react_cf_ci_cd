@@ -159,13 +159,13 @@ Resources:
             AllowedMethods: [GET]
 
   # More dynamic BucketPolicy
-  DeploymentBucketPolicy: 
-    Type: AWS::S3::BucketPolicy
-    Properties: 
-      Bucket: !Ref DeployBucket
-      PolicyDocument: 
-        Statement: 
-          - Action: ["s3:GetObject"]
-            Effect: "Allow"
-            Resource: !Sub "arn:aws:s3:::${DeployBucket}/*"
-            Principal: "*"
+  # DeploymentBucketPolicy: 
+  #   Type: AWS::S3::BucketPolicy
+  #   Properties: 
+  #     Bucket: !Ref DeployBucket
+  #     PolicyDocument: 
+  #       Statement: 
+  #         - Action: ["s3:GetObject"]
+  #           Effect: "Allow"
+  #           Resource: !Sub "arn:aws:s3:::${DeployBucket}/*"
+  #           Principal: "*"
